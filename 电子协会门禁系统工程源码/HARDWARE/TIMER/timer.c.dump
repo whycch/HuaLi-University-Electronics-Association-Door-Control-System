@@ -1,0 +1,113 @@
+#include "timer.h"
+#include "led.h"
+#include "usart.h"   	  
+//这里时钟选择为APB1的2倍，而APB1为36M
+//arr：自动重装值。
+//psc：时钟预分频数
+//这里使用的是定时器3!
+void TIM3_Int_Init(u16 arr,u16 psc)
+{
+    TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE); //时钟使能
+
+	TIM_TimeBaseStructure.TIM_Period = arr; //设置在下一个更新事件装入活动的自动重装载寄存器周期的值
+	//计数到5000为500ms
+	TIM_TimeBaseStructure.TIM_Prescaler =psc; //设置用来作为TIMx时钟频率除数的预分频值  10Khz的计数频率  
+	TIM_TimeBaseStructure.TIM_ClockDivision = 0; //设置时钟分割:TDTS = Tck_tim
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  //TIM向上计数模式
+	TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure); //根据TIM_TimeBaseInitStruct中指定的参数初始化TIMx的时间基数单位
+ 
+	TIM_ITConfig(TIM3,TIM_IT_Update,ENABLE ); //使能指定的TIM3中断,允许更新中断
+
+	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;  //TIM3中断
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;  //先占优先级0级
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;  //从优先级3级
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; //IRQ通道被使能
+	NVIC_Init(&NVIC_InitStructure);  //根据NVIC_InitStruct中指定的参数初始化外设NVIC寄存器
+
+	TIM_Cmd(TIM3, ENABLE);  //使能TIMx外设
+							 
+}
+/*
+//定时器3中断服务程序
+void TIM3_IRQHandler(void)   //TIM3中断
+{
+	if (TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET) //检查指定的TIM中断发生与否:TIM 中断源 
+		{
+		TIM_ClearITPendingBit(TIM3, TIM_IT_Update  );  //清除TIMx的中断待处理位:TIM 中断源 
+		}
+}
+*/
+
+//TIM3 PWM部分初始化 
+//PWM输出初始化
+//arr：自动重装值
+//psc：时钟预分频数
+void TIM3_PWM_Init(u16 arr,u16 psc)
+{  
+	GPIO_InitTypeDef GPIO_InitStructure;//定义一个结构体变量，内含三个成员
+	TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+	TIM_OCInitTypeDef  TIM_OCInitStructure;	
+
+						//------需要修改TIMx
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);	//使能定时器3时钟
+
+						//------需要修改GPIOx
+ 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);//使能GPIO外设时钟		
+ 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);//使能AFIO复用功能模块时钟，不能去掉本条语句		
+		
+						//------根据需要选择是否映射------需要修改TIMx
+	//GPIO_PinRemapConfig(GPIO_PartialRemap_TIMx, ENABLE); 	//Timerx部分重映射
+	GPIO_PinRemapConfig(GPIO_FullRemap_TIM3, ENABLE); 	//Timerx完全重映射
+	//GPIO_PinRemapConfig(GPIO_PartialRemap_TIM3, DISABLE);	//Timer3部分重映射禁止
+	//GPIO_PinRemapConfig(GPIO_FullRemap_TIM3, DISABLE); 		//Timer3完全重映射禁止
+									//GPIO_FullRemap_TIMx时表示完全映射 
+  
+   //设置该引脚为复用输出功能,输出TIM3 CH1、CH2、CH3、CH4的PWM脉冲波形
+   						//------需要修改GPIO_Pin_x
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_All;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF_PP;  //作为PWM输出时GPIO口必须使用复用推挽输出
+						//GPIO_Mode_Out_OD 开漏输出 
+						//GPIO_Mode_Out_PP 通用推挽输出
+						//GPIO_Mode_AF_OD  复用开漏输出
+						//GPIO_Mode_AF_PP  复用推挽输出
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+						//------需要修改GPIOx
+	GPIO_Init(GPIOC, &GPIO_InitStructure);//初始化GPIO
+ 
+   						//初始化TIM3
+	TIM_TimeBaseStructure.TIM_Period = arr; //设置在下一个更新事件装入活动的自动重装载寄存器周期的值
+	TIM_TimeBaseStructure.TIM_Prescaler =psc; //设置用来作为TIMx时钟频率除数的预分频值 
+	TIM_TimeBaseStructure.TIM_ClockDivision = 0; //设置时钟分割:TDTS = Tck_tim
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  //TIM向上计数模式
+						//------需要修改TIMx
+	TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure); //根据TIM_TimeBaseInitStruct中指定的参数初始化TIMx的时间基数单位
+	
+						//初始化TIM3 Channel2 PWM模式
+						//------根据需要选择模式1或者模式2，确定TIM_OCMode_PWMx	 
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //选择定时器模式设置
+						//参数TIM_OCMode设置模式是PWM还是输出比较
+						//TIM_OCMode_Timing
+                        //TIM_OCMode_Active
+                        //TIM_OCMode_Inactive
+                        //TIM_OCMode_Toggle
+                        //TIM_OCMode_PWM1
+                        //TIM_OCMode_PWM2
+						//模式1为先高后低，模式2为先低后高
+ 	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //比较输出使能
+ 						//参数TM_OutputState用来设置比较输出使能，也就是使能PWM输出到端口
+	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //输出极性:TIM输出比较极性高
+						//参数TM_OCPolarity用来设置极性是高还是低
+						//------需要修改TIMx，设定通道
+	TIM_OC1Init(TIM3, &TIM_OCInitStructure);  //TIM3通道设定
+	TIM_OC1PreloadConfig(TIM3, TIM_OCPreload_Enable);  //使能TIM3在CCR1上的预装载寄存器
+	TIM_OC2Init(TIM3, &TIM_OCInitStructure);  //TIM3通道设定
+	TIM_OC2PreloadConfig(TIM3, TIM_OCPreload_Enable);  //使能TIM3在CCR2上的预装载寄存器
+	TIM_OC3Init(TIM3, &TIM_OCInitStructure);  //TIM3通道设定
+	TIM_OC3PreloadConfig(TIM3, TIM_OCPreload_Enable);  //使能TIM3在CCR3上的预装载寄存器
+	TIM_OC4Init(TIM3, &TIM_OCInitStructure);  //TIM3通道设定
+	TIM_OC4PreloadConfig(TIM3, TIM_OCPreload_Enable);  //使能TIM3在CCR4上的预装载寄存器
+	TIM_Cmd(TIM3, ENABLE);  //使能TIM3
+}
